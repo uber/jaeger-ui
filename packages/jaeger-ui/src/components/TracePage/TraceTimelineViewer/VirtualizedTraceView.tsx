@@ -14,13 +14,7 @@
 
 import * as React from 'react';
 import cx from 'classnames';
-import { connect } from 'react-redux';
-import { bindActionCreators, Dispatch } from 'redux';
-import { withRouter, RouteComponentProps } from 'react-router-dom';
 
-// import { History as RouterHistory, Location } from 'history';
-
-import { actions } from './duck';
 import ListView from './ListView';
 import SpanBarRow from './SpanBarRow';
 import DetailState from './SpanDetail/DetailState';
@@ -33,15 +27,14 @@ import {
   ViewedBoundsFunctionType,
 } from './utils';
 import { Accessors } from '../ScrollManager';
-import { extractUiFindFromState, TExtractUiFindFromStateReturn } from '../../common/UiFindInput';
+import { TExtractUiFindFromStateReturn } from '../../common/UiFindInput';
 import getLinks from '../../../model/link-patterns';
 import colorGenerator from '../../../utils/color-generator';
-import { TNil, ReduxState } from '../../../types';
+import { TNil } from '../../../types';
 import { Log, Span, Trace, KeyValuePair } from '../../../types/trace';
 import TTraceTimeline from '../../../types/TTraceTimeline';
 
 import './VirtualizedTraceView.css';
-import updateUiFind from '../../../utils/update-ui-find';
 
 type RowState = {
   isDetail: boolean;
@@ -55,9 +48,9 @@ type TVirtualizedTraceViewOwnProps = {
   scrollToFirstVisibleSpan: () => void;
   registerAccessors: (accesors: Accessors) => void;
   trace: Trace;
-};
+  focusSpan: (uiFind: string) => void;
 
-type TDispatchProps = {
+  // was from redux
   childrenToggle: (spanID: string) => void;
   clearShouldScrollToFirstUiFindMatch: () => void;
   detailLogItemToggle: (spanID: string, log: Log) => void;
@@ -69,14 +62,14 @@ type TDispatchProps = {
   detailToggle: (spanID: string) => void;
   setSpanNameColumnWidth: (width: number) => void;
   setTrace: (trace: Trace | TNil, uiFind: string | TNil) => void;
-  focusUiFindMatches: (trace: Trace, uiFind: string | TNil, allowHide?: boolean) => void;
+  hoverIndentGuideIds: Set<string>;
+  addHoverIndentGuideId: (spanID: string) => void;
+  removeHoverIndentGuideId: (spanID: string) => void;
 };
 
 type VirtualizedTraceViewProps = TVirtualizedTraceViewOwnProps &
-  TDispatchProps &
   TExtractUiFindFromStateReturn &
-  TTraceTimeline &
-  RouteComponentProps;
+  TTraceTimeline;
 
 // export for tests
 export const DEFAULT_HEIGHTS = {
@@ -139,7 +132,7 @@ function getCssClasses(currentViewRange: [number, number]) {
 }
 
 // export from tests
-export class VirtualizedTraceViewImpl extends React.Component<VirtualizedTraceViewProps> {
+export default class VirtualizedTraceView extends React.Component<VirtualizedTraceViewProps> {
   clippingCssClasses: string;
   listView: ListView | TNil;
   rowStates: RowState[];
@@ -222,18 +215,6 @@ export class VirtualizedTraceViewImpl extends React.Component<VirtualizedTraceVi
       clearShouldScrollToFirstUiFindMatch();
     }
   }
-
-  focusSpan = (uiFind: string) => {
-    const { trace, focusUiFindMatches, location, history } = this.props;
-    if (trace) {
-      updateUiFind({
-        location,
-        history,
-        uiFind,
-      });
-      focusUiFindMatches(trace, uiFind, false);
-    }
-  };
 
   getAccessors() {
     const lv = this.listView;
@@ -332,6 +313,10 @@ export class VirtualizedTraceViewImpl extends React.Component<VirtualizedTraceVi
       findMatchesIDs,
       spanNameColumnWidth,
       trace,
+      focusSpan,
+      hoverIndentGuideIds,
+      addHoverIndentGuideId,
+      removeHoverIndentGuideId,
     } = this.props;
     // to avert flow error
     if (!trace) {
@@ -375,7 +360,10 @@ export class VirtualizedTraceViewImpl extends React.Component<VirtualizedTraceVi
           getViewedBounds={this.getViewedBounds}
           traceStartTime={trace.startTime}
           span={span}
-          focusSpan={this.focusSpan}
+          focusSpan={focusSpan}
+          hoverIndentGuideIds={hoverIndentGuideIds}
+          addHoverIndentGuideId={addHoverIndentGuideId}
+          removeHoverIndentGuideId={removeHoverIndentGuideId}
         />
       </div>
     );
@@ -395,6 +383,10 @@ export class VirtualizedTraceViewImpl extends React.Component<VirtualizedTraceVi
       detailToggle,
       spanNameColumnWidth,
       trace,
+      focusSpan,
+      hoverIndentGuideIds,
+      addHoverIndentGuideId,
+      removeHoverIndentGuideId,
     } = this.props;
     const detailState = detailStates.get(spanID);
     if (!trace || !detailState) {
@@ -417,7 +409,10 @@ export class VirtualizedTraceViewImpl extends React.Component<VirtualizedTraceVi
           span={span}
           tagsToggle={detailTagsToggle}
           traceStartTime={trace.startTime}
-          focusSpan={this.focusSpan}
+          focusSpan={focusSpan}
+          hoverIndentGuideIds={hoverIndentGuideIds}
+          addHoverIndentGuideId={addHoverIndentGuideId}
+          removeHoverIndentGuideId={removeHoverIndentGuideId}
         />
       </div>
     );
@@ -442,28 +437,3 @@ export class VirtualizedTraceViewImpl extends React.Component<VirtualizedTraceVi
     );
   }
 }
-
-/* istanbul ignore next */
-function mapStateToProps(state: ReduxState): TTraceTimeline & TExtractUiFindFromStateReturn {
-  return {
-    ...extractUiFindFromState(state),
-    ...state.traceTimeline,
-  };
-}
-
-/* istanbul ignore next */
-function mapDispatchToProps(dispatch: Dispatch<ReduxState>): TDispatchProps {
-  return (bindActionCreators(actions, dispatch) as any) as TDispatchProps;
-}
-
-export default withRouter(
-  connect<
-    TTraceTimeline & TExtractUiFindFromStateReturn,
-    TDispatchProps,
-    TVirtualizedTraceViewOwnProps,
-    ReduxState
-  >(
-    mapStateToProps,
-    mapDispatchToProps
-  )(VirtualizedTraceViewImpl)
-);
